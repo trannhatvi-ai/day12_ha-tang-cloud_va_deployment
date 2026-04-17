@@ -68,5 +68,10 @@ python app.py
 ## Câu hỏi thảo luận
 
 1. Điều gì xảy ra nếu bạn push code với API key hardcode lên GitHub public?
+=> AI sẽ bị lộ và có thể bị lợi dụng, hoặc bị thu hồi nếu bị phát hiện sử dụng trái phép.
+
 2. Tại sao stateless quan trọng khi scale?
+=> stateless quan trọng khi scale vì nó cho phép hệ thống scale horizontally bằng cách thêm nhiều container mà không cần lo lắng về việc lưu trữ trạng thái.
+
 3. 12-factor nói "dev/prod parity" — nghĩa là gì trong thực tế?
+=> 12-factor nói "dev/prod parity" có nghĩa là môi trường phát triển và production nên giống nhau nhất có thể để tránh lỗi phát sinh khi deploy.

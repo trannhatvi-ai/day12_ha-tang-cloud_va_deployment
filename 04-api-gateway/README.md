@@ -59,6 +59,9 @@ curl -X POST http://localhost:8000/auth/token \
      -H "Content-Type: application/json" \
      -d '{"username": "student", "password": "demo123"}'
 
+curl.exe -X POST http://localhost:8000/auth/token -H "Content-Type: application/json" -d "{\"username\": \"student\", \"password\": \"demo123\"}"
+
+
 # Dùng token
 curl -H "Authorization: Bearer <token>" \
      http://localhost:8000/ask \

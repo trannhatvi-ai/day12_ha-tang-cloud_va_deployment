@@ -20,38 +20,99 @@ Create a file `MISSION_ANSWERS.md` with your answers to all exercises:
 ## Part 1: Localhost vs Production
 
 ### Exercise 1.1: Anti-patterns found
-1.hard-coded credentials and secrets,2. hard-coded configuration values,3. lack of proper error handling,4. no logging or monitoring,5. lack of authentication and authorization,6. not using a proper environment variable management system,7. no rate limiting or request validation,8. no monitoring or alerting,9. not following security best practices,10. not using version control.
-2. [Your answer]
-...
+1.hard-coded credentials and secrets
+2.hard-coded configuration values
+3.lack of proper error handling
+4.no logging or monitoring
+5.lack of authentication and authorization
+6.not using a proper environment variable management system
+7.no rate limiting or request validation
+8.no monitoring or alerting
+9.not following security best practices
+10.not using version control.
 
-### Exercise 1.3: Comparison table
-| Feature | Develop | Production | Why Important? |
-|---------|---------|------------|----------------|
-| Config  | ...     | ...        | ...            |
-...
+### Exercise 1.2: Test results
+
+#### Develop
+PS D:\AI_thucchien\Day12\day12_ha-tang-cloud_va_deployment> curl.exe -X POST http://localhost:8000/ask?question=Hi
+{"answer":"Tôi là AI agent được deploy lên cloud. Câu hỏi của bạn đã được nhận."}
+
+#### Production
+PS D:\AI_thucchien\Day12\day12_ha-tang-cloud_va_deployment> curl.exe -X POST http://localhost:8000/ask?question=Hi
+Internal Server Error
+
+-> Nó chạy, nhưng nó báo lỗi Internal Server Error do chưa có API key và chưa có rate limiting và cost guard và không có authentication và authorization. Chỉ có thể chạy được ở localhost
+
+
+###  Exercise 1.3: So sánh với advanced version
+
+```bash
+cd ../production
+cp .env.example .env
+pip install -r requirements.txt
+python app.py
+```
+
+**Nhiệm vụ:** So sánh 2 files `app.py`. Điền vào bảng:
+
+| Feature | Basic (develop) | Advanced (production) | Tại sao quan trọng? |
+|---------|-----------------|----------------------|---------------------|
+| Config | Hardcode `OPENAI_API_KEY`, `DATABASE_URL` trực tiếp trong code | Đọc từ env vars qua `config.py` + `.env` file, có `validate()` fail-fast | Push lên GitHub → key bị lộ, bot quét GitHub tìm key trong vài giây. Env vars cho phép thay đổi config giữa dev/staging/prod mà không sửa code |
+| Health check | Không có (`/health` → 404) | Có `/health` (liveness), `/ready` (readiness), `/metrics` | Platform (Railway/K8s) gọi health check định kỳ, nếu fail → tự restart container. Không có thì app crash âm thầm, không ai biết |
+| Logging | `print()` kèm log cả secret (`print(OPENAI_API_KEY)`) | Structured JSON logging qua `logging` module, KHÔNG log secrets | JSON logs dễ parse bởi log aggregator (Datadog, Loki). `print()` mất khi container restart, không có timestamp/level, không filter được |
+| Shutdown | Đột ngột — `Ctrl+C` kill ngay, request đang xử lý bị mất | Graceful — `SIGTERM` handler + `lifespan` context manager, chờ request hoàn thành rồi mới tắt | Trên cloud, platform gửi SIGTERM trước khi kill. Graceful shutdown đảm bảo không mất data/request đang xử lý |
+| Host binding | `localhost` — chỉ truy cập từ máy local | `0.0.0.0` — nhận kết nối từ bên ngoài container | Trong Docker/cloud, traffic đến từ bên ngoài. Bind `localhost` = container chạy nhưng không ai gọi được |
+| Port | Hardcode `8000` | Đọc từ `PORT` env var | Railway/Render inject PORT tự động, hardcode sẽ conflict |
+
+###  Checkpoint 1
+
+- [x] Hiểu tại sao hardcode secrets là nguy hiểm → Bot quét GitHub tìm API key trong vài giây, key bị lộ = mất tiền + bị revoke
+- [x] Biết cách dùng environment variables → Dùng `os.getenv()` + `.env` file (trong `.gitignore`), centralize qua `config.py` dataclass
+- [x] Hiểu vai trò của health check endpoint → Platform dùng `/health` để biết app còn sống, `/ready` để biết sẵn sàng nhận traffic, fail → auto restart
+- [x] Biết graceful shutdown là gì → Bắt signal SIGTERM, chờ request đang xử lý xong, đóng connections, rồi mới tắt — không mất data
 
 ## Part 2: Docker
 
 ### Exercise 2.1: Dockerfile questions
-1. Base image: [Your answer]
-2. Working directory: [Your answer]
+1. Base image: [python:3.11-slim]
+2. Working directory: [/app]
+3. [EXPOSE 8000]
+4. [COPY . .]
+5. [RUN pip install...]
 ...
 
 ### Exercise 2.3: Image size comparison
-- Develop: [X] MB
-- Production: [Y] MB
-- Difference: [Z]%
+- Develop: [1700] MB
+- Production: [236.44] MB
+- Difference: [720]%
 
 ## Part 3: Cloud Deployment
 
 ### Exercise 3.1: Railway deployment
 - URL: https://03-cloud-deployment-production.up.railway.app
-- Screenshot: [Link to screenshot in repo]
+- Screenshot: https://github.com/trannhatvi-ai/day12_ha-tang-cloud_va_deployment/blob/main/Railway_deployment.png
 
 ## Part 4: API Security
 
 ### Exercise 4.1-4.3: Test results
 [Paste your test outputs]
+#### 4.1
+
+PS D:\AI_thucchien\Day12\day12_ha-tang-cloud_va_deployment> curl.exe -X POST http://localhost:8000/ask?question=Hi
+{"detail":"Missing API key. Include header: X-API-Key: <your-key>"}
+
+#### 4.2
+PS D:\AI_thucchien\Day12\day12_ha-tang-cloud_va_deployment> curl.exe -X POST http://localhost:8000/ask?question=Hi                                                                                          
+Internal Server Error
+
+#### 4.3
+
+PS D:\AI_thucchien\Day12\day12_ha-tang-cloud_va_deployment> Invoke-RestMethod -Uri http://localhost:8000/auth/token -Method POST -Headers @{"Content-Type"="application/json"} -Body '{"username": "student", "password": "demo123"}'     
+
+access_token
+------------
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdHVkZW50Iiwicm9sZSI6InVzZXIiLCJpYXQiOjE3NzY0MjIwM... 
+
 
 ### Exercise 4.4: Cost guard implementation
 [Explain your approach]
