@@ -11,7 +11,17 @@ Trong production: lưu trong Redis/DB, không phải in-memory.
 import time
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime
 from fastapi import HTTPException
+
+try:
+    import redis as _redis
+    _r = _redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+    _r.ping()
+    _REDIS_AVAILABLE = True
+except Exception:
+    _r = None
+    _REDIS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -57,14 +67,40 @@ class CostGuard:
             self._records[user_id] = UsageRecord(user_id=user_id, day=today)
         return self._records[user_id]
 
-    def check_budget(self, user_id: str) -> None:
+    def check_budget(self, user_id: str, estimated_cost: float = 0.0) -> None:
         """
         Kiểm tra budget trước khi gọi LLM.
         Raise 402 nếu vượt budget.
+
+        Nếu Redis available: track monthly budget $10/tháng qua Redis.
+        Fallback: dùng in-memory daily budget.
         """
+        if _REDIS_AVAILABLE and _r is not None:
+            # ── Redis path: $10/tháng per user ──
+            key = f"budget:{user_id}:{datetime.now().strftime('%Y-%m')}"
+            current = float(_r.get(key) or 0)
+
+            if current + estimated_cost > self.global_daily_budget_usd:
+                raise HTTPException(
+                    status_code=402,
+                    detail={
+                        "error": "Monthly budget exceeded",
+                        "used_usd": round(current, 6),
+                        "budget_usd": self.global_daily_budget_usd,
+                        "resets_at": "Start of next month",
+                    },
+                )
+
+            _r.incrbyfloat(key, estimated_cost)
+            _r.expire(key, 32 * 24 * 3600)  # TTL 32 ngày
+
+            if current + estimated_cost >= self.global_daily_budget_usd * self.warn_at_pct:
+                logger.warning(f"User {user_id} at {(current + estimated_cost)/self.global_daily_budget_usd*100:.0f}% monthly budget")
+            return
+
+        # ── Fallback: in-memory daily budget ──
         record = self._get_record(user_id)
 
-        # Global budget check
         if self._global_cost >= self.global_daily_budget_usd:
             logger.critical(f"GLOBAL BUDGET EXCEEDED: ${self._global_cost:.4f}")
             raise HTTPException(
@@ -72,10 +108,9 @@ class CostGuard:
                 detail="Service temporarily unavailable due to budget limits. Try again tomorrow.",
             )
 
-        # Per-user budget check
         if record.total_cost_usd >= self.daily_budget_usd:
             raise HTTPException(
-                status_code=402,  # Payment Required
+                status_code=402,
                 detail={
                     "error": "Daily budget exceeded",
                     "used_usd": record.total_cost_usd,
@@ -84,7 +119,6 @@ class CostGuard:
                 },
             )
 
-        # Warning khi gần hết budget
         if record.total_cost_usd >= self.daily_budget_usd * self.warn_at_pct:
             logger.warning(
                 f"User {user_id} at {record.total_cost_usd/self.daily_budget_usd*100:.0f}% budget"
@@ -126,3 +160,6 @@ class CostGuard:
 
 # Singleton
 cost_guard = CostGuard(daily_budget_usd=1.0, global_daily_budget_usd=10.0)
+
+if not _REDIS_AVAILABLE:
+    logger.warning("Redis not available — CostGuard running in in-memory fallback mode")
