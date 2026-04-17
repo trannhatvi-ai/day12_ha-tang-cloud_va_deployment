@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: my-production-agent
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8000
+      - key: LOG_LEVEL
+        value: INFO
+      - key: REDIS_URL
+        sync: false
+      - key: AGENT_API_KEY
+        sync: false
+      - key: RATE_LIMIT_PER_MINUTE
+        value: 10
+      - key: MONTHLY_BUDGET_USD
+        value: 10.0
+      - key: ESTIMATED_COST_PER_REQUEST_USD
+        value: 0.02
